@@ -1,3 +1,18 @@
+create type "public"."order_status" as enum ('pending', 'confirmed', 'shipped', 'delivered', 'cancelled');
+
+
+  create table "public"."archived_order_totals" (
+    "id" uuid not null default gen_random_uuid(),
+    "order_id" uuid not null,
+    "user_id" uuid not null,
+    "order_total" integer not null,
+    "created_at" timestamp with time zone not null default now(),
+    "updated_at" timestamp with time zone not null default now()
+      );
+
+
+alter table "public"."archived_order_totals" enable row level security;
+
 
   create table "public"."item_history" (
     "id" uuid not null default gen_random_uuid(),
@@ -11,6 +26,8 @@
       );
 
 
+alter table "public"."item_history" enable row level security;
+
 
   create table "public"."items" (
     "id" uuid not null default gen_random_uuid(),
@@ -21,6 +38,8 @@
     "updated_at" timestamp with time zone not null default now()
       );
 
+
+alter table "public"."items" enable row level security;
 
 
   create table "public"."order_items" (
@@ -34,16 +53,21 @@
       );
 
 
+alter table "public"."order_items" enable row level security;
+
 
   create table "public"."orders" (
     "id" uuid not null default gen_random_uuid(),
     "user_id" uuid not null,
     "recipient_name" character varying not null,
     "shipping_address" text not null,
+    "status" public.order_status not null default 'pending'::public.order_status,
     "created_at" timestamp with time zone not null default now(),
     "updated_at" timestamp with time zone not null default now()
       );
 
+
+alter table "public"."orders" enable row level security;
 
 
   create table "public"."profiles" (
@@ -54,6 +78,10 @@
     "updated_at" timestamp with time zone not null default now()
       );
 
+
+alter table "public"."profiles" enable row level security;
+
+CREATE UNIQUE INDEX archived_order_totals_pkey ON public.archived_order_totals USING btree (id);
 
 CREATE INDEX item_history_item_id_idx ON public.item_history USING btree (item_id);
 
@@ -72,6 +100,8 @@ CREATE UNIQUE INDEX orders_pkey ON public.orders USING btree (id);
 CREATE INDEX orders_user_id_idx ON public.orders USING btree (user_id);
 
 CREATE UNIQUE INDEX profiles_pkey ON public.profiles USING btree (id);
+
+alter table "public"."archived_order_totals" add constraint "archived_order_totals_pkey" PRIMARY KEY using index "archived_order_totals_pkey";
 
 alter table "public"."item_history" add constraint "item_history_pkey" PRIMARY KEY using index "item_history_pkey";
 
@@ -139,16 +169,18 @@ end;
 $function$
 ;
 
-create or replace function public.set_updated_at()
-returns trigger
-language plpgsql
-security definer set search_path = ''
-as $$
+CREATE OR REPLACE FUNCTION public.set_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
 begin
   new.updated_at = pg_catalog.now();
   return new;
 end;
-$$;
+$function$
+;
 
 CREATE OR REPLACE FUNCTION public.track_item_changes()
  RETURNS trigger
@@ -169,6 +201,48 @@ begin
 end;
 $function$
 ;
+
+grant delete on table "public"."archived_order_totals" to "anon";
+
+grant insert on table "public"."archived_order_totals" to "anon";
+
+grant references on table "public"."archived_order_totals" to "anon";
+
+grant select on table "public"."archived_order_totals" to "anon";
+
+grant trigger on table "public"."archived_order_totals" to "anon";
+
+grant truncate on table "public"."archived_order_totals" to "anon";
+
+grant update on table "public"."archived_order_totals" to "anon";
+
+grant delete on table "public"."archived_order_totals" to "authenticated";
+
+grant insert on table "public"."archived_order_totals" to "authenticated";
+
+grant references on table "public"."archived_order_totals" to "authenticated";
+
+grant select on table "public"."archived_order_totals" to "authenticated";
+
+grant trigger on table "public"."archived_order_totals" to "authenticated";
+
+grant truncate on table "public"."archived_order_totals" to "authenticated";
+
+grant update on table "public"."archived_order_totals" to "authenticated";
+
+grant delete on table "public"."archived_order_totals" to "service_role";
+
+grant insert on table "public"."archived_order_totals" to "service_role";
+
+grant references on table "public"."archived_order_totals" to "service_role";
+
+grant select on table "public"."archived_order_totals" to "service_role";
+
+grant trigger on table "public"."archived_order_totals" to "service_role";
+
+grant truncate on table "public"."archived_order_totals" to "service_role";
+
+grant update on table "public"."archived_order_totals" to "service_role";
 
 grant delete on table "public"."item_history" to "anon";
 
@@ -380,6 +454,100 @@ grant truncate on table "public"."profiles" to "service_role";
 
 grant update on table "public"."profiles" to "service_role";
 
+
+  create policy "users can read their own archived order totals"
+  on "public"."archived_order_totals"
+  as permissive
+  for select
+  to authenticated
+using ((( SELECT auth.uid() AS uid) = user_id));
+
+  create policy "authenticated users can read item history"
+  on "public"."item_history"
+  as permissive
+  for select
+  to authenticated
+using (true);
+
+
+
+  create policy "anyone can read items"
+  on "public"."items"
+  as permissive
+  for select
+  to anon, authenticated
+using (true);
+
+
+
+  create policy "order items can only be inserted into pending orders"
+  on "public"."order_items"
+  as permissive
+  for insert
+  to authenticated
+with check ((EXISTS ( SELECT 1
+   FROM public.orders
+  WHERE ((orders.id = order_items.order_id) AND (orders.user_id = ( SELECT auth.uid() AS uid)) AND (orders.status = 'pending'::public.order_status)))));
+
+
+
+  create policy "users can read their own order items"
+  on "public"."order_items"
+  as permissive
+  for select
+  to authenticated
+using ((EXISTS ( SELECT 1
+   FROM public.orders
+  WHERE ((orders.id = order_items.order_id) AND (orders.user_id = ( SELECT auth.uid() AS uid))))));
+
+
+
+  create policy "users can insert their own orders"
+  on "public"."orders"
+  as permissive
+  for insert
+  to authenticated
+with check ((( SELECT auth.uid() AS uid) = user_id));
+
+
+
+  create policy "users can only update pending or confirmed orders"
+  on "public"."orders"
+  as permissive
+  for update
+  to authenticated
+using (((( SELECT auth.uid() AS uid) = user_id) AND (status = ANY (ARRAY['pending'::public.order_status, 'confirmed'::public.order_status]))))
+with check ((( SELECT auth.uid() AS uid) = user_id));
+
+
+
+  create policy "users can read their own orders"
+  on "public"."orders"
+  as permissive
+  for select
+  to authenticated
+using ((( SELECT auth.uid() AS uid) = user_id));
+
+
+
+  create policy "users can read their own profile"
+  on "public"."profiles"
+  as permissive
+  for select
+  to authenticated
+using ((( SELECT auth.uid() AS uid) = id));
+
+
+
+  create policy "users can update their own profile"
+  on "public"."profiles"
+  as permissive
+  for update
+  to authenticated
+using ((( SELECT auth.uid() AS uid) = id))
+with check ((( SELECT auth.uid() AS uid) = id));
+
+
 CREATE TRIGGER on_item_changed AFTER INSERT OR DELETE OR UPDATE ON public.items FOR EACH ROW EXECUTE FUNCTION public.track_item_changes();
 
 CREATE TRIGGER set_items_updated_at BEFORE UPDATE ON public.items FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
@@ -390,6 +558,8 @@ CREATE TRIGGER set_orders_updated_at BEFORE UPDATE ON public.orders FOR EACH ROW
 
 CREATE TRIGGER set_profiles_updated_at BEFORE UPDATE ON public.profiles FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+CREATE TRIGGER set_item_history_updated_at BEFORE UPDATE ON public.item_history FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+CREATE TRIGGER set_archived_order_totals_updated_at BEFORE UPDATE ON public.archived_order_totals FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
-
-

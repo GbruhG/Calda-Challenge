@@ -32,7 +32,11 @@ begin
 end;
 $$;
 
--- triggers on every INSERT, UPDATE and DELETE regardless of what triggered the change
+create trigger set_item_history_updated_at
+  before update on public.item_history
+  for each row execute function public.set_updated_at();
+
+-- triggers on every INSERT, UPDATE and DELETE 
 create trigger on_item_changed
   after insert or update or delete on public.items
   for each row execute function public.track_item_changes();

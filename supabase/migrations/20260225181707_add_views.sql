@@ -1,11 +1,13 @@
--- supabase docs say - To mitigate the risk, always set with (security_invoker=on) when a view should respect RLS policies.
+-- supabase docs say - "To mitigate the risk, always set with (security_invoker=on) when a view should respect RLS policies."
 -- cant create the view with a schema, because cli diffing engine treats "security_invoker" as a "default" or "ignorable" parameter and removes it
+-- fetches all orders for a user
 create view public.order_summary with (security_invoker=on) as
 select
   o.id,
   o.user_id,
   o.recipient_name,
   o.shipping_address,
+  o.status,
   o.created_at,
   o.updated_at,
   sum(oi.quantity * oi.unit_price) as order_total,

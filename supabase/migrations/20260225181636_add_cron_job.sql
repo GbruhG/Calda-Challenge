@@ -1,6 +1,7 @@
-create extension if not exists pg_cron with schema pg_catalog;
+create extension pg_cron with schema extensions;
+grant usage on schema cron to postgres;
+grant all privileges on all tables in schema cron to postgres;
 
--- archive order totals and delete orders older than 1 week
 create or replace function public.archive_and_delete_old_orders()
 returns void
 language plpgsql
@@ -16,12 +17,10 @@ begin
   join public.order_items oi on oi.order_id = o.id
   where o.created_at < now() - interval '1 week'
   group by o.id, o.user_id;
-
   delete from public.orders
   where created_at < now() - interval '1 week';
 end;
 $$;
-
 -- run every day at midnight
 select cron.schedule(
   'archive-and-delete-old-orders',
