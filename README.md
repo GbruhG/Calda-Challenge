@@ -1,3 +1,13 @@
+# Calda Backend Challenge
+
+Vse zahtevane stvari so implementirane + nekaj extras za popoln order lifecycle.
+
+**Extras:**
+- Zahtevana create-order funkcija je razširjena z input validacijo, preverjanjem zaloge pred vnosom naročila in samodejnim zmanjšanjem zaloge ob uspešnem naročilu
+- Order status enum s pravilnimi prehodi
+- Dodatni edge funkciji: get-orders in update-order za celoten order lifecycle
+- Realtime na tabeli orders
+
 ## Testing the edge functions
 
 The seeded users can't sign in (inserted directly into auth.users). Create a user and get access token:
